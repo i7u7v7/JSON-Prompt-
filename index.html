@@ -1,0 +1,76 @@
+// Improved JSON Prompt Scraper from Twitter Post URL // Detects both raw and json wrapped blocks
+
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Twitter JSON Prompt Scraper</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f4; }
+    textarea, input[type='text'] { width: 100%; padding: 10px; margin-top: 10px; }
+    button { margin-top: 10px; padding: 10px; background: #007bff; color: white; border: none; cursor: pointer; }
+    pre { background: #eee; padding: 10px; white-space: pre-wrap; word-wrap: break-word; border-left: 4px solid #007bff; }
+    .json-block { position: relative; margin-top: 20px; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .copy-btn { position: absolute; top: 10px; right: 10px; background: #28a745; color: white; border: none; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+  </style>
+</head>
+<body><h2>🐦 Twitter JSON Prompt Scraper (Manual URL)</h2>
+<p>Paste a tweet URL below. The tweet content and embedded JSON will be shown.</p><input type="text" id="tweetUrl" placeholder="Paste Tweet URL here">
+<button onclick="extractJSON()">Extract JSON Prompt</button><div id="output"></div><script>
+  async function extractJSON() {
+    const url = document.getElementById("tweetUrl").value;
+    const output = document.getElementById("output");
+    output.innerHTML = "<p>Fetching tweet...</p>";
+
+    try {
+      const proxy = "https://api.allorigins.win/get?url=" + encodeURIComponent(url);
+      const res = await fetch(proxy);
+      const data = await res.json();
+      const html = data.contents;
+
+      // Extract tweet text from og:description meta tag
+      const tweetMatch = html.match(/<meta name=\"description\" content=\"(.*?)\">/);
+      const rawText = tweetMatch ? tweetMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&') : "Tweet text not found.";
+
+      // Combine matches from ```json and raw { } blocks
+      let jsonBlocks = [];
+
+      // Match triple backtick json blocks
+      const tripleMatch = [...html.matchAll(/```json[\s\n]*({[\s\S]*?})[\s\n]*```/gi)];
+      tripleMatch.forEach(m => jsonBlocks.push(m[1]));
+
+      // Match raw blocks (a bit naive but works for single JSON object)
+      const rawMatches = [...html.matchAll(/({[\s\S]*?})/g)];
+      rawMatches.forEach(m => {
+        try {
+          const parsed = JSON.parse(m[1]);
+          jsonBlocks.push(JSON.stringify(parsed, null, 2));
+        } catch (_) {}
+      });
+
+      if (jsonBlocks.length === 0) {
+        output.innerHTML = "<p>No JSON prompt found in the tweet.</p>";
+        return;
+      }
+
+      output.innerHTML = '';
+      jsonBlocks.forEach((jsonStr, i) => {
+        const jsonId = `json${i}`;
+        output.innerHTML += `
+          <div class="json-block">
+            <p><strong>Tweet Preview:</strong><br>${rawText}</p>
+            <button class="copy-btn" onclick="copyToClipboard('${jsonId}')">Copy JSON</button>
+            <pre id="${jsonId}">${jsonStr}</pre></div>
+    `;
+  });
+} catch (err) {
+  output.innerHTML = `<p style='color:red;'>Error fetching or parsing tweet. Try public tweet URLs only.</p>`;
+  console.error(err);
+}
+
+}
+
+function copyToClipboard(id) { const text = document.getElementById(id).innerText; navigator.clipboard.writeText(text).then(() => { alert("Copied to clipboard!"); }); } </script>
+
+</body>
+</html>
